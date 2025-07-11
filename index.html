@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>30-Cell XO Game vs AI</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --cell-bg: #16213e;
+      --cell-hover: #0f3460;
+      --x-color: #e94560;
+      --o-color: #00adb5;
+      --win-color: #ffd369;
+      --text-color: #eeeeee;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text-color);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 { margin-bottom: 10px; }
+
+    .scoreboard {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 10px;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(6, 60px);
+      grid-template-rows: repeat(5, 60px);
+      gap: 6px;
+      margin-bottom: 15px;
+    }
+
+    .cell {
+      background: var(--cell-bg);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2em;
+      cursor: pointer;
+      color: var(--text-color);
+      transition: transform 0.2s, background 0.3s;
+    }
+    .cell:hover { background: var(--cell-hover); transform: scale(1.05); }
+    .cell.taken { cursor: not-allowed; }
+    .cell.x { color: var(--x-color); }
+    .cell.o { color: var(--o-color); }
+    .cell.winner {
+      animation: flash 1s infinite alternate;
+      background: var(--win-color) !important;
+      color: #000 !important;
+    }
+
+    .message { margin-bottom: 10px; }
+
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      background: var(--cell-hover);
+      border: none;
+      color: var(--text-color);
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--x-color); }
+
+    @keyframes flash {
+      from { box-shadow: 0 0 5px 2px var(--win-color); }
+      to   { box-shadow: 0 0 15px 5px var(--win-color); }
+    }
+  </style>
+</head>
+<body>
+  <h1>XO Game – 30 Cells (5×6)</h1>
+  <div class="scoreboard">
+    <div>You (X): <span id="scoreX">0</span></div>
+    <div>AI (O): <span id="scoreO">0</span></div>
+    <div>Ties: <span id="scoreT">0</span></div>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="message" id="message">Your move</div>
+  <div>
+    <button onclick="resetGame()">Restart Round</button>
+    <button onclick="resetScore()">Reset Score</button>
+  </div>
+
+  <script>
+    const COLS = 6, ROWS = 5, WIN_COUNT = 4;
+    const boardEl = document.getElementById("board");
+    const messageEl = document.getElementById("message");
+    const scoreXEl = document.getElementById("scoreX");
+    const scoreOEl = document.getElementById("scoreO");
+    const scoreTEl = document.getElementById("scoreT");
+
+    let board = Array(ROWS * COLS).fill(null);
+    let cells = [];
+    let scores = { X: 0, O: 0, T: 0 };
+    let gameActive = true;
+
+    function index(row, col) {
+      return row * COLS + col;
+    }
+
+    function createBoard() {
+      boardEl.innerHTML = "";
+      board = Array(ROWS * COLS).fill(null);
+      cells = [];
+      gameActive = true;
+
+      for (let i = 0; i < ROWS * COLS; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.addEventListener("click", () => handleClick(i));
+        boardEl.appendChild(cell);
+        cells.push(cell);
+      }
+
+      messageEl.textContent = "Your move";
+    }
+
+    function handleClick(i) {
+      if (!gameActive || board[i]) return;
+      makeMove(i, "X");
+      if (gameActive) setTimeout(aiTurn, 400);
+    }
+
+    function makeMove(i, player) {
+      board[i] = player;
+      cells[i].textContent = player;
+      cells[i].classList.add("taken", player.toLowerCase());
+
+      const winPattern = checkWin(player);
+      if (winPattern) {
+        winPattern.forEach(idx => cells[idx].classList.add("winner"));
+        messageEl.textContent = player === "X" ? "You win! 🎉" : "AI wins! 🤖";
+        scores[player]++;
+        gameActive = false;
+      } else if (board.every(cell => cell)) {
+        messageEl.textContent = "It's a tie!";
+        scores.T++;
+        gameActive = false;
+      } else {
+        messageEl.textContent = player === "X" ? "AI is thinking..." : "Your move";
+      }
+      updateScore();
+    }
+
+    function aiTurn() {
+      const best = minimax(board.slice(), "O").index;
+      if (best !== undefined) makeMove(best, "O");
+    }
+
+    function checkWin(player) {
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const pattern = [];
+          // horizontal
+          if (col + WIN_COUNT <= COLS)
+            pattern.push([...Array(WIN_COUNT)].map((_, k) => index(row, col + k)));
+          // vertical
+          if (row + WIN_COUNT <= ROWS)
+            pattern.push([...Array(WIN_COUNT)].map((_, k) => index(row + k, col)));
+          // diag right
+          if (row + WIN_COUNT <= ROWS && col + WIN_COUNT <= COLS)
+            pattern.push([...Array(WIN_COUNT)].map((_, k) => index(row + k, col + k)));
+          // diag left
+          if (row + WIN_COUNT <= ROWS && col - WIN_COUNT + 1 >= 0)
+            pattern.push([...Array(WIN_COUNT)].map((_, k) => index(row + k, col - k)));
+
+          for (let pat of pattern) {
+            if (pat.every(i => board[i] === player)) return pat;
+          }
+        }
+      }
+      return null;
+    }
+
+    function minimax(bd, player) {
+      const empty = bd.map((v, i) => v === null ? i : null).filter(i => i !== null);
+      if (checkWin("X")) return { score: -10 };
+      if (checkWin("O")) return { score: 10 };
+      if (empty.length === 0) return { score: 0 };
+
+      const moves = [];
+      for (let i of empty) {
+        bd[i] = player;
+        const score = minimax(bd, player === "O" ? "X" : "O").score;
+        moves.push({ index: i, score });
+        bd[i] = null;
+      }
+
+      return player === "O"
+        ? moves.reduce((max, m) => m.score > max.score ? m : max)
+        : moves.reduce((min, m) => m.score < min.score ? m : min);
+    }
+
+    function updateScore() {
+      scoreXEl.textContent = scores.X;
+      scoreOEl.textContent = scores.O;
+      scoreTEl.textContent = scores.T;
+    }
+
+    function resetGame() {
+      createBoard();
+    }
+
+    function resetScore() {
+      scores = { X: 0, O: 0, T: 0 };
+      updateScore();
+      resetGame();
+    }
+
+    // Start game
+    createBoard();
+    updateScore();
+  </script>
+</body>
+</html>
